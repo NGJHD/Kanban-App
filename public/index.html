@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kanban Board</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #f4f3f0;
+      --surface:   #ebebea;
+      --card:      #ffffff;
+      --border:    rgba(0,0,0,0.09);
+      --border-md: rgba(0,0,0,0.15);
+      --text:      #1a1a18;
+      --text-2:    #6b6b68;
+      --text-3:    #9b9b98;
+      --info:      #378ADD;
+      --info-bg:   #e6f1fb;
+      --danger:    #E24B4A;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:        #111110;
+        --surface:   #1c1c1a;
+        --card:      #242422;
+        --border:    rgba(255,255,255,0.08);
+        --border-md: rgba(255,255,255,0.14);
+        --text:      #e8e8e4;
+        --text-2:    #9b9b96;
+        --text-3:    #636360;
+        --info:      #5da3f0;
+        --info-bg:   rgba(55,138,221,0.12);
+        --danger:    #f07070;
+      }
+    }
+
+    body { font-family: 'Geist', 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    .app    { padding: 24px 48px; }
+    .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; }
+    .title  { font-size: 18px; font-weight: 800; letter-spacing: -0.03em; }
+    .save-indicator { font-size: 11px; color: var(--text-3); display: flex; align-items: center; gap: 5px; }
+    .save-dot { width: 6px; height: 6px; border-radius: 50%; background: #1D9E75; }
+    .save-dot.saving { background: var(--info); animation: pulse 1s infinite; }
+    .save-dot.error  { background: var(--danger); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-items: start; }
+
+    .col        { background: var(--surface); border-radius: 14px; padding: 12px; min-height: 340px; border: 1.5px solid transparent; transition: border-color .15s, background .15s; cursor: default; }
+    .col.over   { border-color: var(--info); background: var(--info-bg); }
+    .col-head   { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .col-label  { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-2); }
+    .col-dot    { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .col-count  { font-size: 11px; background: var(--card); border: .5px solid var(--border); color: var(--text-3); padding: 1px 7px; border-radius: 20px; }
+    .add-btn    { width: 24px; height: 24px; border-radius: 8px; border: .5px solid var(--border-md); background: var(--card); cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; color: var(--text-2); line-height:1; transition: background .12s; flex-shrink: 0; }
+    .add-btn:hover { background: var(--bg); color: var(--text); }
+
+    .sort-bar    { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+    .sort-label  { font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--text-3); white-space: nowrap; }
+    .sort-select { flex: 1; font-family: inherit; font-size: 11px; font-weight: 500; color: var(--text-2); background: var(--card); border: .5px solid var(--border-md); border-radius: 7px; padding: 4px 8px; cursor: pointer; outline: none; }
+    .sort-select:focus { border-color: var(--info); }
+
+    .empty { text-align: center; padding: 30px 0; font-size: 12px; color: var(--text-3); }
+
+    .date-group + .date-group { margin-top: 16px; }
+    .date-header { display: flex; align-items: center; gap: 9px; font-size: 11px; font-weight: 700; color: var(--text-3); letter-spacing: .03em; margin-bottom: 8px; padding: 0 2px; }
+    .date-header::after { content: ''; flex: 1; height: .5px; background: var(--border-md); }
+
+
+
+    /* Card — user-select none, draggable from anywhere */
+    .card       { background: var(--card); border: .5px solid var(--border); border-radius: 12px; padding: 11px 13px 10px; margin-bottom: 8px; cursor: grab; user-select: none; transition: opacity .15s, border-color .15s; position: relative; }
+    .card:hover { border-color: var(--border-md); }
+    .card:active { cursor: grabbing; }
+    .card.faded { opacity: .3; }
+    .card.editing { border-color: var(--info); cursor: default; }
+
+    /* Card meta row: badge + date */
+    .card-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .card-date { font-size: 10px; color: var(--text-3); font-weight: 500; white-space: nowrap; cursor: text; }
+    .card-date:hover { color: var(--text-2); }
+    .card-date-input {
+      font-family: inherit; font-size: 10px; font-weight: 500; color: var(--text-2);
+      background: var(--surface); border: .5px solid var(--info);
+      border-radius: 5px; padding: 1px 5px; outline: none; width: 110px;
+    }
+
+    /* Badge */
+    .badge-wrap { position: relative; display: inline-flex; }
+    .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; padding: 3px 8px; border-radius: 20px; cursor: pointer; user-select: none; transition: filter .1s; }
+    .badge:hover { filter: brightness(0.93); }
+    .badge-dot { width: 5px; height: 5px; border-radius: 50%; }
+
+    .pri-dropdown { position: absolute; top: calc(100% + 5px); left: 0; z-index: 200; background: var(--card); border: .5px solid var(--border-md); border-radius: 10px; padding: 4px; min-width: 110px; box-shadow: 0 4px 16px rgba(0,0,0,.12); }
+    .pri-option { display: flex; align-items: center; gap: 7px; padding: 6px 9px; border-radius: 7px; cursor: pointer; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; transition: background .1s; }
+    .pri-option:hover { background: var(--surface); }
+    .pri-option-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+    /* Markdown rendered content */
+    .card-body { font-size: 13px; font-weight: 500; line-height: 1.6; color: var(--text); cursor: text; }
+    .card-body p  { margin: 0 0 4px; }
+    .card-body p:last-child { margin-bottom: 0; }
+    .card-body ul, .card-body ol { margin: 4px 0 4px 18px; }
+    .card-body li { margin-bottom: 2px; }
+    .card-body strong { font-weight: 700; }
+    .card-body em { font-style: italic; }
+    .card-body code { font-family: monospace; font-size: 12px; background: var(--surface); padding: 1px 5px; border-radius: 4px; }
+
+    /* Inline edit textarea */
+    .card-edit-area {
+      width: 100%; font-family: inherit; font-size: 13px; font-weight: 500;
+      color: var(--text); background: var(--surface);
+      border: none; outline: none; resize: none;
+      border-radius: 6px; padding: 6px 8px;
+      min-height: 80px; line-height: 1.6; cursor: text;
+    }
+
+    /* Context menu */
+    .ctx-menu { position: fixed; z-index: 500; background: var(--card); border: .5px solid var(--border-md); border-radius: 10px; padding: 4px; min-width: 120px; box-shadow: 0 4px 20px rgba(0,0,0,.15); }
+    .ctx-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 7px; cursor: pointer; font-size: 12px; font-weight: 500; color: var(--danger); transition: background .1s; }
+    .ctx-item:hover { background: var(--surface); }
+
+    /* Drag ghost */
+    #drag-ghost {
+      position: fixed; top: -9999px; left: -9999px; z-index: 9999;
+      background: var(--card); border: 1px solid var(--border-md);
+      border-radius: 12px; padding: 10px 13px;
+      width: 260px; opacity: 0.85; pointer-events: none;
+      box-shadow: 0 8px 24px rgba(0,0,0,.18);
+    }
+    #drag-ghost .ghost-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 10px; font-weight: 800; letter-spacing: .08em;
+      text-transform: uppercase; padding: 3px 8px; border-radius: 20px;
+      margin-bottom: 6px;
+    }
+    #drag-ghost .ghost-dot { width: 5px; height: 5px; border-radius: 50%; }
+    #drag-ghost .ghost-desc {
+      font-size: 12px; font-weight: 500; line-height: 1.5; color: var(--text);
+      white-space: pre-wrap; word-break: break-word;
+    }
+
+    /* Modal */
+    .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 999; }
+    .modal   { background: var(--card); border: .5px solid var(--border-md); border-radius: 18px; padding: 30px 34px; width: 570px; max-width: 95vw; }
+    .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 22px; color: var(--text); }
+    .field { margin-bottom: 18px; }
+    .lbl   { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); display: block; margin-bottom: 8px; }
+    .modal textarea { width: 100%; font-family: inherit; font-size: 13px; color: var(--text); background: var(--bg); border: .5px solid var(--border-md); border-radius: 8px; padding: 10px 12px; outline: none; min-height: 120px; resize: vertical; transition: border-color .12s; line-height: 1.6; }
+    .modal textarea:focus { border-color: var(--info); }
+    .md-hint { font-size: 11px; color: var(--text-3); margin-top: 5px; }
+    .pri-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 9px; }
+    .pri-opt  { border-radius: 9px; padding: 11px 4px; text-align: center; cursor: pointer; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; border: 2px solid transparent; transition: border-color .12s; }
+    .modal-foot { display: flex; align-items: center; gap: 10px; margin-top: 22px; justify-content: flex-end; }
+    .cancel-btn { font-size: 13px; background: none; border: .5px solid var(--border-md); padding: 8px 16px; border-radius: 9px; cursor: pointer; color: var(--text-2); }
+    .save-btn   { font-size: 13px; font-weight: 700; background: var(--text); color: var(--bg); border: none; padding: 8px 20px; border-radius: 9px; cursor: pointer; }
+    .save-btn:hover { opacity: .85; }
+    .loading { display: flex; align-items: center; justify-content: center; height: 60vh; font-size: 13px; color: var(--text-3); }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<!-- Hidden ghost element used for custom drag image -->
+<div id="drag-ghost"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script type="text/babel">
+const { useState, useRef, useEffect, useCallback } = React;
+
+marked.setOptions({ breaks: true, gfm: true });
+
+const PRIORITIES = [
+  { value: "high",   label: "High",   bg: "#FCEBEB", color: "#A32D2D", dot: "#E24B4A" },
+  { value: "medium", label: "Medium", bg: "#FAEEDA", color: "#854F0B", dot: "#EF9F27" },
+  { value: "low",    label: "Low",    bg: "#E1F5EE", color: "#0F6E56", dot: "#1D9E75" },
+];
+const PRI_ORDER = { high: 0, medium: 1, low: 2 };
+
+const COLUMNS = [
+  { id: "todo",     title: "Not Started", dot: "#9B9B9B", sortable: true  },
+  { id: "progress", title: "In Progress", dot: "#378ADD", sortable: true  },
+  { id: "done",     title: "Completed",   dot: "#1D9E75", sortable: false },
+];
+
+const MONTHS     = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const todayStr   = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+const formatLong = (iso) => { const [y,m,d] = iso.split("-"); return `${parseInt(d)} / ${MONTHS[parseInt(m)-1]} / ${y}`; };
+const formatShort = (isoOrStr) => {
+  if (!isoOrStr) return "";
+  const d = new Date(isoOrStr);
+  if (isNaN(d)) return "";
+  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+};
+
+function groupByDate(cards) {
+  const map = {};
+  cards.forEach(c => { const k = c.completedAt || "unknown"; (map[k] = map[k]||[]).push(c); });
+  return Object.entries(map).sort(([a],[b]) => {
+    if (a==="unknown") return 1; if (b==="unknown") return -1; return b.localeCompare(a);
+  });
+}
+
+function sortCards(cards, mode) {
+  const copy = [...cards];
+  if (mode === "priority") {
+    // Primary: priority order; secondary: newest createdAt first
+    copy.sort((a, b) => {
+      const pd = (PRI_ORDER[a.priority]??9) - (PRI_ORDER[b.priority]??9);
+      if (pd !== 0) return pd;
+      return new Date(b.createdAt||0) - new Date(a.createdAt||0);
+    });
+  } else {
+    // Date created, newest first
+    copy.sort((a,b) => new Date(b.createdAt||0) - new Date(a.createdAt||0));
+  }
+  return copy;
+}
+
+const getPri = v => PRIORITIES.find(p => p.value === v) || PRIORITIES[1];
+
+// Build ghost DOM content for custom drag image
+function buildGhost(card) {
+  const ghost = document.getElementById("drag-ghost");
+  if (!ghost) return;
+  const p = getPri(card.priority);
+  ghost.innerHTML = `
+    <div class="ghost-badge" style="background:${p.bg};color:${p.color}">
+      <span class="ghost-dot" style="background:${p.dot}"></span>${p.label}
+    </div>
+    <div class="ghost-desc">${card.desc ? card.desc.slice(0, 120) : ""}</div>
+  `;
+  // Temporarily position offscreen-but-rendered so browser can snapshot it
+  ghost.style.top  = "-9999px";
+  ghost.style.left = "-9999px";
+}
+
+function PriBadge({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const p   = getPri(value);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  return (
+    <div className="badge-wrap" ref={ref}>
+      <span className="badge" style={{ background: p.bg, color: p.color }}
+        onClick={e => { e.stopPropagation(); setOpen(o => !o); }}
+        onMouseDown={e => e.stopPropagation()}>
+        <span className="badge-dot" style={{ background: p.dot }} />
+        {p.label}
+      </span>
+      {open && (
+        <div className="pri-dropdown">
+          {PRIORITIES.map(opt => (
+            <div key={opt.value} className="pri-option"
+              onMouseDown={e => { e.stopPropagation(); onChange(opt.value); setOpen(false); }}>
+              <span className="pri-option-dot" style={{ background: opt.dot }} />
+              <span style={{ color: opt.color }}>{opt.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Inline editable date — double-click to edit as plain string
+function CardDate({ value, onChange }) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText]       = useState("");
+  const inputRef              = useRef(null);
+
+  const startEdit = (e) => {
+    e.stopPropagation();
+    setText(value ? formatShort(value) : "");
+    setEditing(true);
+    setTimeout(() => { if (inputRef.current) { inputRef.current.focus(); inputRef.current.select(); } }, 0);
+  };
+
+  const commit = () => {
+    setEditing(false);
+    // Try to parse what the user typed back to an ISO string
+    const parsed = new Date(text.trim());
+    if (!isNaN(parsed)) {
+      onChange(parsed.toISOString());
+    }
+    // If unparseable, leave unchanged
+  };
+
+  if (!value) return null;
+
+  return editing ? (
+    <input
+      ref={inputRef}
+      className="card-date-input"
+      value={text}
+      onChange={e => setText(e.target.value)}
+      onBlur={commit}
+      onMouseDown={e => e.stopPropagation()}
+      onClick={e => e.stopPropagation()}
+      onKeyDown={e => {
+        if (e.key === "Enter") { e.preventDefault(); commit(); }
+        if (e.key === "Escape") { setEditing(false); }
+      }}
+    />
+  ) : (
+    <span className="card-date"
+      onDoubleClick={startEdit}
+      onMouseDown={e => e.stopPropagation()}>
+      {formatShort(value)}
+    </span>
+  );
+}
+
+function KanbanCard({ card, isDragging, onDragStart, onDragEnd, onDragOver, onChangePriority, onChangeDesc, onChangeDate, onContextMenu }) {
+  const [editing, setEditing]   = useState(false);
+  const [editText, setEditText] = useState("");
+  const taRef                   = useRef(null);
+
+  const startEdit = () => {
+    setEditText(card.desc || "");
+    setEditing(true);
+    setTimeout(() => { if (taRef.current) { taRef.current.focus(); taRef.current.select(); } }, 0);
+  };
+
+  const commitEdit = () => {
+    setEditing(false);
+    const text = editText.trim();
+    if (text !== (card.desc || "").trim()) onChangeDesc(text);
+  };
+
+  const html = card.desc ? marked.parse(card.desc) : "";
+
+  return (
+    <div
+      className={`card${isDragging?" faded":""}${editing?" editing":""}`}
+      draggable={!editing}
+      onDragStart={!editing ? onDragStart : undefined}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onContextMenu={onContextMenu}
+      onDoubleClick={e => { if (!editing) { e.stopPropagation(); startEdit(); } }}
+    >
+      <div className="card-meta">
+        <PriBadge value={card.priority} onChange={onChangePriority} />
+        <CardDate value={card.createdAt} onChange={onChangeDate} />
+      </div>
+
+      {editing ? (
+        <textarea
+          ref={taRef}
+          className="card-edit-area"
+          value={editText}
+          onChange={e => setEditText(e.target.value)}
+          onBlur={commitEdit}
+          onMouseDown={e => e.stopPropagation()}
+          onClick={e => e.stopPropagation()}
+          onDoubleClick={e => e.stopPropagation()}
+          rows={Math.max(3, (editText.match(/\n/g)||[]).length + 1)}
+        />
+      ) : (
+        <div className="card-body"
+          dangerouslySetInnerHTML={{ __html: html || `<p style="color:var(--text-3)">double-click to add description</p>` }}
+        />
+      )}
+    </div>
+  );
+}
+
+function App() {
+  const [cards, setCards]               = useState(null);
+  const [sortSettings, setSortSettings] = useState({ todo: "created", progress: "created" });
+  const [saveStatus, setSaveStatus]     = useState("saved");
+  const [modal, setModal]               = useState(null);
+  const [form, setForm]                 = useState({ desc: "", priority: "medium" });
+  const [draggingId, setDraggingId]     = useState(null);
+  const [dropTarget, setDropTarget]     = useState(null);
+  const [ctxMenu, setCtxMenu]           = useState(null);
+
+  const drag      = useRef({ card: null, overCol: null, overIdx: null });
+  const saveTimer = useRef(null);
+
+  useEffect(() => {
+    fetch("/api/data")
+      .then(r => r.json())
+      .then(data => {
+        setCards(data.cards || []);
+        setSortSettings({ todo: "created", progress: "created", ...data.sortSettings });
+      })
+      .catch(() => setCards([]));
+  }, []);
+
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = () => setCtxMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("contextmenu", close);
+    return () => { window.removeEventListener("click", close); window.removeEventListener("contextmenu", close); };
+  }, [ctxMenu]);
+
+  const persist = useCallback((nextCards, nextSort) => {
+    clearTimeout(saveTimer.current);
+    setSaveStatus("saving");
+    saveTimer.current = setTimeout(() => {
+      fetch("/api/data", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cards: nextCards, sortSettings: nextSort }),
+      }).then(() => setSaveStatus("saved")).catch(() => setSaveStatus("error"));
+    }, 600);
+  }, []);
+
+  const updateCards = fn => setCards(prev => { const next = fn(prev); persist(next, sortSettings); return next; });
+  const updateSort  = (colId, mode) => {
+    const next = { ...sortSettings, [colId]: mode };
+    setSortSettings(next);
+    persist(cards, next);
+  };
+
+  const rawColCards = id => (cards || []).filter(c => c.col === id);
+  const colCards    = id => id === "done" ? rawColCards(id) : sortCards(rawColCards(id), sortSettings[id]);
+
+  const openCreate = colId => { setForm({ desc: "", priority: "medium" }); setModal({ colId }); };
+  const saveCard   = () => {
+    updateCards(p => [...p, {
+      id: Date.now().toString(), desc: form.desc.trim(), priority: form.priority,
+      col: modal.colId, createdAt: new Date().toISOString(),
+      ...(modal.colId === "done" ? { completedAt: todayStr() } : {}),
+    }]);
+    setModal(null);
+  };
+
+  const changePriority = (cardId, v) => updateCards(p => p.map(c => c.id===cardId ? {...c, priority:v} : c));
+  const changeDesc     = (cardId, d) => updateCards(p => p.map(c => c.id===cardId ? {...c, desc:d}     : c));
+  const changeDate     = (cardId, d) => updateCards(p => p.map(c => c.id===cardId ? {...c, createdAt:d} : c));
+  const deleteCard     = (cardId)    => updateCards(p => p.filter(c => c.id !== cardId));
+
+  const onDragStart = (e, card) => {
+    drag.current.card = card;
+    setDraggingId(card.id);
+    e.dataTransfer.effectAllowed = "move";
+    // Custom drag ghost
+    buildGhost(card);
+    const ghost = document.getElementById("drag-ghost");
+    if (ghost) e.dataTransfer.setDragImage(ghost, 40, 20);
+  };
+
+  const onDragEnd = () => {
+    const { card, overCol, overIdx } = drag.current;
+    if (card && overCol && overCol !== card.col) {
+      updateCards(prev => {
+        const rest  = prev.filter(c => c.id !== card.id);
+        const moved = { ...card, col: overCol };
+        if (overCol === "done" && card.col !== "done") moved.completedAt = todayStr();
+        if (overCol !== "done") delete moved.completedAt;
+        const target = rest.filter(c => c.col === overCol);
+        const others = rest.filter(c => c.col !== overCol);
+        const idx    = overIdx !== null ? Math.min(overIdx, target.length) : target.length;
+        target.splice(idx, 0, moved);
+        return [...others, ...target];
+      });
+    }
+    drag.current = { card:null, overCol:null, overIdx:null };
+    setDraggingId(null); setDropTarget(null);
+  };
+
+  const onCardOver = (e, colId, idx) => { e.preventDefault(); e.stopPropagation(); drag.current.overCol=colId; drag.current.overIdx=idx; setDropTarget({ colId, idx }); };
+  const onColOver  = (e, colId)      => { e.preventDefault(); drag.current.overCol=colId; drag.current.overIdx=rawColCards(colId).length; setDropTarget({ colId, idx: rawColCards(colId).length }); };
+  const onColDblClick = (e, colId)   => { if (e.target === e.currentTarget) openCreate(colId); };
+
+  if (cards === null) return <div className="loading">Loading…</div>;
+
+  return (
+    <div className="app" onClick={() => setCtxMenu(null)}>
+      <div className="header">
+        <h1 className="title">Kanban Board</h1>
+        <div className="save-indicator">
+          <span className={`save-dot${saveStatus==="saving"?" saving":saveStatus==="error"?" error":""}`} />
+          {saveStatus==="saving" ? "Saving…" : saveStatus==="error" ? "Save failed" : "Saved to kanban.json"}
+        </div>
+      </div>
+
+      <div className="grid">
+        {COLUMNS.map(col => {
+          const cc     = colCards(col.id);
+          const raw    = rawColCards(col.id);
+          const isOver = !!draggingId && dropTarget?.colId === col.id;
+
+          return (
+            <div key={col.id} className={`col${isOver?" over":""}`}
+              onDragOver={e => onColOver(e, col.id)} onDrop={onDragEnd}
+              onDoubleClick={e => onColDblClick(e, col.id)}>
+
+              <div className="col-head" onDoubleClick={e => { if (e.target === e.currentTarget) openCreate(col.id); }}>
+                <div className="col-label">
+                  <span className="col-dot" style={{ background: col.dot }} />
+                  {col.title}
+                  <span className="col-count">{raw.length}</span>
+                </div>
+                <button className="add-btn" onClick={() => openCreate(col.id)}>+</button>
+              </div>
+
+              {col.sortable && (
+                <div className="sort-bar">
+                  <span className="sort-label">Sort</span>
+                  <select className="sort-select"
+                    value={sortSettings[col.id] || "created"}
+                    onChange={e => updateSort(col.id, e.target.value)}>
+                    <option value="created">Date created (Newest first)</option>
+                    <option value="priority">Priority (High → Low)</option>
+                  </select>
+                </div>
+              )}
+
+              {cc.length === 0 && <div className="empty">Drop cards here</div>}
+
+              {col.id === "done" ? (
+                groupByDate(cc).map(([dateKey, group]) => (
+                  <div key={dateKey} className="date-group">
+                    <div className="date-header">
+                      {dateKey === "unknown" ? "Unknown date" : formatLong(dateKey)}
+                    </div>
+                    {group.map(card => {
+                      const globalIdx = raw.indexOf(card);
+                      return (
+                        <div key={card.id}>
+                          <KanbanCard card={card} isDragging={draggingId===card.id}
+                            onDragStart={e => onDragStart(e, card)} onDragEnd={onDragEnd}
+                            onDragOver={e => onCardOver(e, "done", globalIdx)}
+                            onChangePriority={v => changePriority(card.id, v)}
+                            onChangeDesc={d => changeDesc(card.id, d)}
+                            onChangeDate={d => changeDate(card.id, d)}
+                            onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x:e.clientX, y:e.clientY, cardId:card.id }); }} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))
+              ) : (
+                cc.map((card, idx) => {
+                  return (
+                    <div key={card.id}>
+                      <KanbanCard card={card} isDragging={draggingId===card.id}
+                        onDragStart={e => onDragStart(e, card)} onDragEnd={onDragEnd}
+                        onDragOver={e => onCardOver(e, col.id, idx)}
+                        onChangePriority={v => changePriority(card.id, v)}
+                        onChangeDesc={d => changeDesc(card.id, d)}
+                        onChangeDate={d => changeDate(card.id, d)}
+                        onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x:e.clientX, y:e.clientY, cardId:card.id }); }} />
+                    </div>
+                  );
+                })
+              )}
+
+
+            </div>
+          );
+        })}
+      </div>
+
+      {ctxMenu && (
+        <div className="ctx-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }} onClick={e => e.stopPropagation()}>
+          <div className="ctx-item" onClick={() => { deleteCard(ctxMenu.cardId); setCtxMenu(null); }}>
+            Delete card
+          </div>
+        </div>
+      )}
+
+      {modal && (
+        <div className="overlay" onClick={e => e.target===e.currentTarget && setModal(null)}>
+          <div className="modal">
+            <div className="modal-title">New card</div>
+            <div className="field">
+              <label className="lbl">Description</label>
+              <textarea value={form.desc} autoFocus placeholder={"What needs to be done?\n\n* Use bullet points\n* Like this"}
+                onChange={e => setForm(f => ({ ...f, desc: e.target.value }))} />
+              <div className="md-hint">Supports markdown — **bold**, *italic*, bullet lists</div>
+            </div>
+            <div className="field">
+              <label className="lbl">Priority</label>
+              <div className="pri-grid">
+                {PRIORITIES.map(p => (
+                  <div key={p.value} className="pri-opt"
+                    style={{ background: p.bg, color: p.color, borderColor: form.priority===p.value ? p.dot : "transparent" }}
+                    onClick={() => setForm(f => ({ ...f, priority: p.value }))}>
+                    {p.label}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="modal-foot">
+              <button className="cancel-btn" onClick={() => setModal(null)}>Cancel</button>
+              <button className="save-btn" onClick={saveCard}>Add card</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
