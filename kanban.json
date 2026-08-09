@@ -1,67 +1,37 @@
 {
   "cards": [
     {
-      "id": "7",
-      "desc": "Set up CI/CD pipeline",
+      "id": "1786288391758",
+      "desc": "this is awesome",
       "priority": "high",
+      "col": "todo",
+      "createdAt": "2026-08-09T15:13:11.758Z"
+    },
+    {
+      "id": "1786288398951",
+      "desc": "really",
+      "priority": "medium",
+      "col": "todo",
+      "createdAt": "2026-08-09T15:13:18.951Z"
+    },
+    {
+      "id": "1786288416622",
+      "desc": "this takes forever",
+      "priority": "low",
       "col": "progress",
-      "createdAt": "2026-04-07T16:10:19.098Z"
+      "createdAt": "2026-08-09T15:13:36.622Z"
     },
     {
-      "id": "3",
-      "desc": "Schedule 5 sessions with power users",
-      "priority": "low",
-      "col": "done",
-      "createdAt": "2026-04-19T16:10:19.098Z",
-      "completedAt": "2026-04-21"
-    },
-    {
-      "id": "4",
-      "desc": "Deploy to staging",
-      "priority": "low",
-      "col": "done",
-      "createdAt": "2026-04-11T16:10:19.098Z",
-      "completedAt": "2026-04-21"
-    },
-    {
-      "id": "2",
-      "desc": "Connect new backend endpoints",
+      "id": "1786288425099",
+      "desc": "yay i completed something",
       "priority": "medium",
       "col": "done",
-      "createdAt": "2026-04-18T16:10:19.098Z",
-      "completedAt": "2026-04-22"
-    },
-    {
-      "id": "6",
-      "desc": "Write release notes",
-      "priority": "medium",
-      "col": "todo",
-      "createdAt": "2026-04-12T16:10:19.098Z"
-    },
-    {
-      "id": "1",
-      "desc": "Review all components for consistency",
-      "priority": "high",
-      "col": "todo",
-      "createdAt": "2026-04-17T16:00:00.000Z"
-    },
-    {
-      "id": "8",
-      "desc": "Migrate legacy endpoints",
-      "priority": "medium",
-      "col": "todo",
-      "createdAt": "2026-04-09T16:10:19.098Z"
-    },
-    {
-      "id": "5",
-      "desc": "Token refresh fails on mobile\n- 1",
-      "priority": "medium",
-      "col": "todo",
-      "createdAt": "2026-02-20T16:00:00.000Z"
+      "createdAt": "2026-08-09T15:13:45.099Z",
+      "completedAt": "2026-08-09"
     }
   ],
   "sortSettings": {
     "todo": "priority",
-    "progress": "priority"
+    "progress": "created"
   }
 }

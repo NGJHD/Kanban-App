@@ -12,7 +12,7 @@ if %errorlevel% neq 0 (
 
 if not exist "node_modules" (
     echo Installing dependencies...
-    call npm install
+    call npm install --omit=dev
     if %errorlevel% neq 0 (
         echo [ERROR] npm install failed.
         pause
@@ -27,6 +27,5 @@ echo.
 echo  Press Ctrl+C to stop the server.
 echo.
 
-start "" "http://localhost:5555"
 node server.js
 pause
