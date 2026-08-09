@@ -1,8 +1,10 @@
-# kanban-app
+# Kanban App
 
-Vibe coded this kanban app to my own liking. Why don't I use an existing one? I think they have too many features. Too many for my caveman brain to use.
+Vibe coded this nodejs kanban app to my own liking. Why don't I use an existing one? I think they have too many features. Too many for my caveman brain to use.
 
 <img width="1914" height="440" alt="Kanban" src="https://github.com/user-attachments/assets/8a74ff4c-5b7c-418b-8aca-a179a5fd867b" />
+
+Double click `start server.bat` then `start frontend.bat` to use it.
 
 Features
 - Double click on the grey part of the column to add a card
