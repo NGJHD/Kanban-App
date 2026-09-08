@@ -4,6 +4,7 @@ const path     = require("path");
 
 const app       = express();
 const PORT      = 5555;
+const HOST      = "127.0.0.1";
 const DATA_FILE = path.join(__dirname, "kanban.json");
 
 const now      = Date.now();
@@ -73,6 +74,8 @@ app.post("/api/data", (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Kanban board running at http://localhost:${PORT}`);
+// Bind to loopback only: this board is local-only, and binding 0.0.0.0 would
+// trigger a Windows Firewall prompt on every new machine it is copied to.
+app.listen(PORT, HOST, () => {
+  console.log(`Kanban board running at http://${HOST}:${PORT}`);
 });

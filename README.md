@@ -4,8 +4,6 @@ Vibe coded this nodejs kanban app to my own liking. Why don't I use an existing 
 
 <img width="1914" height="440" alt="Kanban" src="https://github.com/user-attachments/assets/8a74ff4c-5b7c-418b-8aca-a179a5fd867b" />
 
-Double click `start server.bat` then `start frontend.bat` to use it.
-
 Features
 - Double click on the grey part of the column to add a card
 - There is no title for the card, only description.
@@ -17,3 +15,25 @@ Features
 - When you drag to completed, the current date will be assigned as the completed date automatically (you can change it by double clicking)
 - You can sort by priority or by date
 - There is a search (filter) button that filters the entire board
+
+## Running it
+
+Double click **start.bat**. It starts the server with no console window and opens
+the board in your browser. If the server is already running it just opens the
+browser - it will never start a second copy.
+
+Double click **stop.bat** to shut the server down. Because there is no window,
+this is the only way to stop it short of a reboot.
+
+The board lives at http://127.0.0.1:5555 and listens on loopback only, so it is
+not reachable from other machines and Windows Firewall will not prompt.
+
+## Portable use
+
+The release zip is self contained: it bundles `runtime/node.exe` and
+`node_modules`, so it runs from a USB stick on a machine with no Node.js
+installed. Extract it anywhere and double click `start.bat`.
+
+If you cloned the repo instead, `runtime/` and `node_modules/` are not in git.
+`start.bat` falls back to your system Node and runs `npm install` on first use.
+
