@@ -5,7 +5,7 @@ Vibe coded this nodejs kanban app to my own liking. Why don't I use an existing 
 <img width="1914" height="440" alt="Kanban" src="https://github.com/user-attachments/assets/8a74ff4c-5b7c-418b-8aca-a179a5fd867b" />
 
 Features
-- Double click on the grey part of the column to add a card
+- Double click on an empty part of a column (or click the faint + next to its heading) to add a card
 - There is no title for the card, only description.
 - Markdown supported in the description
 - Double click on the description to edit it
@@ -14,7 +14,8 @@ Features
 - Everything saves to a local JSON file
 - When you drag to completed, the current date will be assigned as the completed date automatically (you can change it by double clicking)
 - You can sort by priority or by date
-- There is a search (filter) button that filters the entire board
+- The floating search bar at the bottom filters the entire board
+- The dot in the top left shows save status: green is saved, grey is saving, red means something went wrong (hover it for details)
 
 ## Running it
 

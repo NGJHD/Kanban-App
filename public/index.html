@@ -1,14 +1,794 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Kanban Board</title>
-    <script type="module" crossorigin src="/assets/index-BBRKl1kC.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-Dk8y6_0W.css">
-  </head>
-  <body>
-    <div id="root"></div>
-    <div id="drag-ghost"></div>
-  </body>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kanban Board</title>
+<script src="/assets/marked.min.js"></script>
+<style>
+/* Geist is only used inside cards, for legibility. Everything else is Segoe Script. */
+@font-face{font-family:Geist;font-style:normal;font-display:swap;font-weight:400;src:url(/assets/geist-latin-400-normal-DSkA1yZt.woff2) format("woff2")}
+@font-face{font-family:Geist;font-style:normal;font-display:swap;font-weight:500;src:url(/assets/geist-latin-500-normal-DJ9fwJi3.woff2) format("woff2")}
+@font-face{font-family:Geist;font-style:normal;font-display:swap;font-weight:600;src:url(/assets/geist-latin-600-normal-C4XfSTOc.woff2) format("woff2")}
+@font-face{font-family:Geist;font-style:normal;font-display:swap;font-weight:700;src:url(/assets/geist-latin-700-normal-CKFtLPQ7.woff2) format("woff2")}
+@font-face{font-family:Geist;font-style:normal;font-display:swap;font-weight:800;src:url(/assets/geist-latin-800-normal-D7Id04DE.woff2) format("woff2")}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --script:"Segoe Script","Segoe Print",cursive;
+  --sans:Geist,"Segoe UI",sans-serif;
+  --ink:#111;
+  --frost:rgba(255,255,255,.3);
+  --blur:blur(4px);
+  --note:#ffdd79;
+  --note-text:#1a1a18;
+  --note-text-2:rgba(0,0,0,.5);
+  --ok:#24bb3a;
+  --busy:#9a9a9a;
+  --danger:#d93636;
+  --col-pad:clamp(16px,3.2vw,62px);
+}
+
+html{background:#8b5a36}
+body{
+  min-height:100vh;
+  color:var(--ink);
+  font-family:var(--script);
+  /* The tile is the design background stacked on a mirrored copy of itself, so it repeats without a seam. */
+  background:#8b5a36 url(/assets/design/background.jpg) top center/100% auto repeat-y;
+}
+
+/* Frosted surfaces: 30% white with a backdrop blur, framed by the hand-drawn border. */
+.frost{
+  isolation:isolate;
+  background:none;
+  border:6px solid transparent;
+  border-image:url(/assets/design/button-frame.png) 10 / 6px stretch;
+}
+/* The fill sits on its own layer, inset 3px from the frame's outer edge, so the
+   hand-drawn stroke covers it instead of the white peeking out past the lines. */
+.frost::before{
+  content:"";position:absolute;inset:-3px;z-index:-1;pointer-events:none;
+  background:var(--frost-fill,var(--frost));
+  -webkit-backdrop-filter:var(--blur);
+  backdrop-filter:var(--blur);
+}
+
+/* ---- Page frame ------------------------------------------------------------ */
+.page{position:relative;min-height:100vh}
+.hline{
+  position:absolute;top:62px;left:30px;right:30px;height:17px;pointer-events:none;
+  background:url(/assets/design/hor-line.png) center/100% 100% no-repeat;
+}
+
+.status{position:absolute;top:26px;left:30px;z-index:20;width:18px;height:18px}
+.status-dot{display:block;width:18px;height:18px;border-radius:50%;background:var(--ok);transition:background .2s}
+.status.saving .status-dot{background:var(--busy);animation:pulse 1s infinite}
+.status.error .status-dot{background:var(--danger)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+.status-tip{
+  position:absolute;left:30px;top:50%;transform:translateY(-50%);
+  white-space:nowrap;padding:3px 12px;font-size:15px;
+  opacity:0;pointer-events:none;transition:opacity .15s;
+}
+.status:hover .status-tip{opacity:1}
+
+/* ---- Board ----------------------------------------------------------------- */
+.board{display:grid;grid-template-columns:repeat(3,1fr);min-height:100vh}
+.loading{grid-column:1/-1;display:flex;align-items:center;justify-content:center;font-size:24px}
+
+.col{position:relative;display:flex;flex-direction:column;min-width:0;padding-bottom:140px;transition:background .15s}
+.col.over{background:rgba(255,255,255,.12)}
+.col+.col::before{
+  content:"";position:absolute;top:0;bottom:0;left:-5px;width:10px;pointer-events:none;z-index:1;
+  background:url(/assets/design/ver-line.png) center/100% 100% no-repeat;
+}
+
+.col-head{position:relative;height:74px;display:flex;align-items:center;justify-content:center;padding:0 56px}
+.col-title{font-weight:700;font-size:28px;line-height:1;white-space:nowrap}
+.add-btn{
+  position:absolute;right:28px;top:50%;transform:translateY(-50%);
+  font-family:var(--script);font-weight:700;font-size:clamp(24px,2.1vw,40px);line-height:1;color:var(--ink);
+  background:none;border:none;cursor:pointer;padding:0 4px;transition:transform .15s;
+}
+.add-btn:hover{transform:translateY(-50%) scale(1.15)}
+
+.sort-bar{display:flex;justify-content:center;gap:18px;margin-top:24px;height:34px}
+.sort-btn{
+  position:relative;display:flex;align-items:center;gap:8px;min-width:124px;height:34px;padding:0 12px;
+  font-family:var(--script);font-size:18px;color:var(--ink);cursor:pointer;
+  border-image:none;
+}
+/* The frame lives on a pseudo-element so it can be faded on the unselected sort
+   without fading the label. */
+.sort-btn::after{
+  content:"";position:absolute;inset:-6px;pointer-events:none;
+  border:6px solid transparent;
+  border-image:url(/assets/design/button-frame.png) 10 / 6px stretch;
+  transition:opacity .15s;
+}
+.sort-btn:not(.active)::after{opacity:.3}
+.sort-btn:not(.active):hover::after{opacity:.6}
+.sort-btn img{height:20px;width:auto}
+
+.col-cards{flex:1;padding:0 var(--col-pad);margin-top:25px}
+.col.done .col-cards{margin-top:24px}
+
+.date-group+.date-group{margin-top:30px}
+.date-header{
+  display:flex;align-items:center;gap:18px;height:34px;margin:0 -37px 25px -20px;
+  font-size:18px;font-weight:700;text-transform:uppercase;white-space:nowrap;
+}
+.date-header i{flex:1;height:14px;background:url(/assets/design/date-separator.png) center/100% 100% no-repeat}
+
+/* ---- Cards (Geist, unchanged content) ------------------------------------- */
+.card{
+  position:relative;margin-bottom:18px;padding:14px 18px 16px;min-height:96px;
+  background:var(--note);color:var(--note-text);font-family:var(--sans);
+  box-shadow:0 1px 2px rgba(0,0,0,.25),0 4px 14px rgba(40,18,4,.4);
+  cursor:grab;user-select:none;-webkit-user-select:none;transition:opacity .15s;
+}
+.card:active{cursor:grabbing}
+.card.faded{opacity:.3}
+.card.editing{cursor:default;outline:2px solid rgba(0,0,0,.35);outline-offset:-2px}
+.card-meta{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.card-date{font-size:11px;font-weight:500;color:var(--note-text-2);white-space:nowrap;cursor:text}
+.card-date:hover{color:var(--note-text)}
+.card-date-input{
+  width:120px;padding:1px 5px;font-family:inherit;font-size:11px;font-weight:500;color:var(--note-text);
+  background:rgba(255,255,255,.55);border:1px solid rgba(0,0,0,.3);border-radius:4px;outline:none;
+}
+.badge-wrap{position:relative;display:inline-flex}
+.badge{
+  display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:20px;
+  font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+  cursor:pointer;user-select:none;transition:filter .1s;
+}
+.badge:hover{filter:brightness(.93)}
+.badge-dot{width:5px;height:5px;border-radius:50%}
+.pri-dropdown{
+  position:absolute;top:calc(100% + 5px);left:0;z-index:200;min-width:110px;padding:4px;
+  background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.2);
+}
+.pri-option{
+  display:flex;align-items:center;gap:7px;padding:6px 9px;border-radius:7px;cursor:pointer;
+  font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;transition:background .1s;
+}
+.pri-option:hover{background:#f1f0ec}
+.pri-option-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.card-body{font-size:14px;font-weight:500;line-height:1.6;cursor:text;overflow-wrap:anywhere}
+.card-body p{margin:0 0 4px}
+.card-body p:last-child{margin-bottom:0}
+.card-body ul,.card-body ol{margin:4px 0 4px 18px}
+.card-body li{margin-bottom:2px}
+.card-body strong{font-weight:700}
+.card-body em{font-style:italic}
+.card-body code{padding:1px 5px;border-radius:4px;background:rgba(0,0,0,.08);font-family:monospace;font-size:13px}
+.card-body a{color:inherit}
+.card-body .placeholder{color:var(--note-text-2)}
+.card-edit-area{
+  display:block;width:100%;min-height:80px;padding:6px 8px;resize:none;
+  font-family:inherit;font-size:14px;font-weight:500;line-height:1.6;color:var(--note-text);
+  background:rgba(255,255,255,.5);border:none;border-radius:4px;outline:none;
+}
+
+#drag-ghost{
+  position:fixed;top:-9999px;left:-9999px;z-index:9999;width:260px;padding:10px 13px;pointer-events:none;
+  background:var(--note);font-family:var(--sans);opacity:.9;box-shadow:0 8px 24px rgba(0,0,0,.3);
+}
+#drag-ghost .ghost-badge{
+  display:inline-flex;align-items:center;gap:5px;margin-bottom:6px;padding:3px 8px;border-radius:20px;
+  font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+}
+#drag-ghost .ghost-dot{width:5px;height:5px;border-radius:50%}
+#drag-ghost .ghost-desc{font-size:12px;font-weight:500;line-height:1.5;color:var(--note-text);white-space:pre-wrap;word-break:break-word}
+
+/* ---- Floating search -------------------------------------------------------- */
+.search{
+  position:fixed;left:50%;bottom:43px;transform:translateX(-50%);z-index:50;
+  display:flex;align-items:center;gap:8px;width:255px;height:55px;padding:0 10px 0 8px;
+  border-image-source:url(/assets/design/search-frame.png);border-image-slice:12;
+  --frost-fill:rgba(255,255,255,.4);
+}
+.search img{height:30px;width:auto;flex-shrink:0}
+.search input{
+  flex:1;min-width:0;background:none;border:none;outline:none;
+  font-family:var(--script);font-size:18px;color:var(--ink);
+}
+.search input::placeholder{color:var(--ink);opacity:.45}
+.search-clear{
+  flex-shrink:0;background:none;border:none;cursor:pointer;padding:0 2px;
+  font-family:var(--script);font-size:16px;color:var(--ink);opacity:.5;
+}
+.search-clear:hover{opacity:1}
+.search-clear[hidden]{display:none}
+
+/* ---- Context menu ----------------------------------------------------------- */
+.ctx-menu{position:fixed;z-index:500;min-width:140px;padding:2px;--frost-fill:rgba(245,140,165,.45)}
+.ctx-item{padding:6px 12px;cursor:pointer;font-size:16px;color:var(--danger);white-space:nowrap}
+.ctx-item:hover{background:rgba(230,70,70,.15)}
+
+/* ---- New card modal --------------------------------------------------------- */
+.overlay{
+  position:fixed;inset:0;z-index:999;display:flex;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.35);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
+}
+.modal{
+  width:570px;max-width:95vw;padding:28px 34px 26px;background:var(--note);
+  box-shadow:0 12px 40px rgba(0,0,0,.4);
+}
+.modal-title{font-size:30px;margin-bottom:18px}
+.field{margin-bottom:18px}
+.lbl{
+  display:block;margin-bottom:8px;
+  font-family:var(--sans);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--note-text);
+}
+.modal textarea{
+  width:100%;min-height:120px;padding:10px 12px;resize:vertical;
+  font-family:var(--sans);font-size:14px;font-weight:500;line-height:1.6;color:var(--note-text);
+  background:rgba(255,255,255,.55);border:1px solid rgba(0,0,0,.2);border-radius:4px;outline:none;
+}
+.modal textarea:focus{border-color:rgba(0,0,0,.5)}
+.md-hint{margin-top:6px;font-family:var(--sans);font-size:11px;color:var(--note-text-2)}
+.pri-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.pri-opt{
+  padding:11px 4px;border:2px solid transparent;border-radius:9px;cursor:pointer;text-align:center;
+  font-family:var(--sans);font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+  transition:border-color .12s;
+}
+.modal-foot{display:flex;justify-content:flex-end;gap:14px;margin-top:22px}
+.modal-btn{position:relative;min-width:110px;height:40px;padding:0 14px;font-family:var(--script);font-size:17px;color:var(--ink);cursor:pointer}
+.modal-btn.secondary{--frost-fill:rgba(245,140,165,.45)}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="status saving" id="status">
+    <span class="status-dot"></span>
+    <span class="status-tip frost" id="status-tip">Loading…</span>
+  </div>
+  <div class="hline"></div>
+  <div class="board" id="board"><div class="loading">Loading…</div></div>
+</div>
+
+<label class="search frost">
+  <img src="/assets/design/search.png" alt="" />
+  <input id="search" type="text" placeholder="Search…" autocomplete="off" />
+  <button class="search-clear" id="search-clear" type="button" title="Clear search" hidden>✕</button>
+</label>
+
+<div id="ctx-root"></div>
+<div id="modal-root"></div>
+<div id="drag-ghost"></div>
+
+<script>
+marked.setOptions({ breaks: true, gfm: true });
+
+const PRIORITIES = [
+  { value: "high",   label: "High",   bg: "#FCEBEB", color: "#A32D2D", dot: "#E24B4A" },
+  { value: "medium", label: "Medium", bg: "#FAEEDA", color: "#854F0B", dot: "#EF9F27" },
+  { value: "low",    label: "Low",    bg: "#E1F5EE", color: "#0F6E56", dot: "#1D9E75" },
+];
+const PRI_ORDER = { high: 0, medium: 1, low: 2 };
+const COLUMNS = [
+  { id: "todo",     title: "To Do",       sortable: true  },
+  { id: "progress", title: "In Progress", sortable: true  },
+  { id: "done",     title: "Completed",   sortable: false },
+];
+const SORTS = [
+  { value: "priority", label: "Priority" },
+  { value: "created",  label: "Date" },
+];
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const STATUS_TEXT = { saved: "Saved to kanban.json", saving: "Saving…", error: "Save failed" };
+
+const state = {
+  cards: null,
+  sortSettings: { todo: "created", progress: "created" },
+  loadFailed: false,
+  query: "",
+  openPri: null,   // card id whose priority dropdown is open
+  editDesc: null,  // card id whose description is being edited
+  editDate: null,  // card id whose date is being edited
+  focusEditor: false,
+  ctx: null,       // { x, y, cardId }
+  modal: null,     // { colId, desc, priority }
+};
+const drag = { card: null, overCol: null, overIdx: null };
+
+const $board = document.getElementById("board");
+const $status = document.getElementById("status");
+const $statusTip = document.getElementById("status-tip");
+const $search = document.getElementById("search");
+const $searchClear = document.getElementById("search-clear");
+const $ctxRoot = document.getElementById("ctx-root");
+const $modalRoot = document.getElementById("modal-root");
+
+// ---- Helpers -----------------------------------------------------------------
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function today() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function fmtGroupDate(s) {
+  const [y, m, d] = s.split("-");
+  return `${parseInt(d)} / ${MONTHS[parseInt(m) - 1]} / ${y}`;
+}
+
+function fmtCardDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return isNaN(d) ? "" : `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function groupByCompleted(cards) {
+  const groups = {};
+  cards.forEach(c => {
+    const k = c.completedAt || "unknown";
+    (groups[k] = groups[k] || []).push(c);
+  });
+  return Object.entries(groups).sort(([a], [b]) => a === "unknown" ? 1 : b === "unknown" ? -1 : b.localeCompare(a));
+}
+
+function sortCards(cards, mode) {
+  const out = [...cards];
+  const byNewest = (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+  if (mode === "priority") {
+    out.sort((a, b) => ((PRI_ORDER[a.priority] ?? 9) - (PRI_ORDER[b.priority] ?? 9)) || byNewest(a, b));
+  } else {
+    out.sort(byNewest);
+  }
+  return out;
+}
+
+function priInfo(v) {
+  return PRIORITIES.find(p => p.value === v) || PRIORITIES[1];
+}
+
+function colCards(colId) {
+  return (state.cards || []).filter(c => c.col === colId);
+}
+
+function visibleCards(colId) {
+  const all = colCards(colId);
+  const sorted = colId === "done" ? all : sortCards(all, state.sortSettings[colId]);
+  const q = state.query.trim().toLowerCase();
+  return q ? sorted.filter(c => (c.desc || "").toLowerCase().includes(q)) : sorted;
+}
+
+function findCard(id) {
+  return state.cards.find(c => c.id === id);
+}
+
+// ---- Status & persistence ----------------------------------------------------
+
+function setStatus(kind, message) {
+  $status.className = `status ${kind}`;
+  $statusTip.textContent = message || STATUS_TEXT[kind];
+}
+
+let saveTimer = null;
+function scheduleSave() {
+  if (state.loadFailed) {
+    setStatus("error", "Couldn't load kanban.json, so changes are not being saved");
+    return;
+  }
+  clearTimeout(saveTimer);
+  setStatus("saving");
+  saveTimer = setTimeout(async () => {
+    try {
+      const res = await fetch("/api/data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cards: state.cards, sortSettings: state.sortSettings }),
+      });
+      if (!res.ok) throw new Error(res.statusText);
+      setStatus("saved");
+    } catch {
+      setStatus("error");
+    }
+  }, 600);
+}
+
+function updateCards(fn) {
+  state.cards = fn(state.cards);
+  scheduleSave();
+  render();
+}
+
+function setSort(colId, mode) {
+  if (state.sortSettings[colId] === mode) return;
+  state.sortSettings = { ...state.sortSettings, [colId]: mode };
+  scheduleSave();
+  render();
+}
+
+// ---- Rendering ---------------------------------------------------------------
+
+function renderCard(card, colId, idx) {
+  const p = priInfo(card.priority);
+  const editing = state.editDesc === card.id;
+  const editingDate = state.editDate === card.id;
+
+  const dropdown = state.openPri === card.id
+    ? `<div class="pri-dropdown">${PRIORITIES.map(o => `
+        <div class="pri-option" data-pri="${o.value}">
+          <span class="pri-option-dot" style="background:${o.dot}"></span>
+          <span style="color:${o.color}">${o.label}</span>
+        </div>`).join("")}</div>`
+    : "";
+
+  let date = "";
+  if (card.createdAt) {
+    date = editingDate
+      ? `<input class="card-date-input" value="${esc(fmtCardDate(card.createdAt))}" />`
+      : `<span class="card-date">${esc(fmtCardDate(card.createdAt))}</span>`;
+  }
+
+  const body = editing
+    ? `<textarea class="card-edit-area" rows="${Math.max(3, ((card.desc || "").match(/\n/g) || []).length + 1)}">${esc(card.desc || "")}</textarea>`
+    : `<div class="card-body">${card.desc ? marked.parse(card.desc) : `<p class="placeholder">double-click to add description</p>`}</div>`;
+
+  return `
+    <div class="card${editing ? " editing" : ""}" draggable="${!editing && !editingDate}"
+         data-id="${esc(card.id)}" data-col="${colId}" data-idx="${idx}">
+      <div class="card-meta">
+        <div class="badge-wrap">
+          <span class="badge" style="background:${p.bg};color:${p.color}">
+            <span class="badge-dot" style="background:${p.dot}"></span>${p.label}
+          </span>${dropdown}
+        </div>
+        ${date}
+      </div>
+      ${body}
+    </div>`;
+}
+
+function renderColumn(col) {
+  const all = colCards(col.id);
+  const shown = visibleCards(col.id);
+
+  const sortBar = col.sortable
+    ? `<div class="sort-bar">${SORTS.map(s => `
+        <button class="sort-btn frost${(state.sortSettings[col.id] || "created") === s.value ? " active" : ""}"
+                type="button" data-sort="${s.value}">
+          <img src="/assets/design/arrow.png" alt="" />${s.label}
+        </button>`).join("")}</div>`
+    : "";
+
+  const cards = col.id === "done"
+    ? groupByCompleted(shown).map(([date, cards]) => `
+        <div class="date-group">
+          <div class="date-header"><span>${date === "unknown" ? "Unknown date" : esc(fmtGroupDate(date))}</span><i></i></div>
+          ${cards.map(c => renderCard(c, col.id, all.indexOf(c))).join("")}
+        </div>`).join("")
+    : shown.map((c, i) => renderCard(c, col.id, i)).join("");
+
+  return `
+    <section class="col ${col.id}" data-col="${col.id}">
+      <div class="col-head">
+        <h2 class="col-title">${col.title} (${all.length})</h2>
+        <button class="add-btn" type="button" title="Add card">+</button>
+      </div>
+      ${sortBar}
+      <div class="col-cards">${cards}</div>
+    </section>`;
+}
+
+function render() {
+  if (state.cards === null) return;
+  $board.innerHTML = COLUMNS.map(renderColumn).join("");
+
+  if (state.focusEditor) {
+    state.focusEditor = false;
+    const el = $board.querySelector(".card-edit-area, .card-date-input");
+    if (el) { el.focus(); el.select(); }
+  }
+  renderCtx();
+}
+
+function renderCtx() {
+  $ctxRoot.innerHTML = state.ctx
+    ? `<div class="ctx-menu frost" style="left:${state.ctx.x}px;top:${state.ctx.y}px">
+         <div class="ctx-item" data-action="delete">Delete card</div>
+       </div>`
+    : "";
+}
+
+function renderModal() {
+  const m = state.modal;
+  if (!m) { $modalRoot.innerHTML = ""; return; }
+  $modalRoot.innerHTML = `
+    <div class="overlay">
+      <div class="modal">
+        <div class="modal-title">New card</div>
+        <div class="field">
+          <label class="lbl" for="new-desc">Description</label>
+          <textarea id="new-desc" placeholder="What needs to be done?\n\n* Use bullet points\n* Like this">${esc(m.desc)}</textarea>
+          <div class="md-hint">Supports markdown: **bold**, *italic*, bullet lists</div>
+        </div>
+        <div class="field">
+          <span class="lbl">Priority</span>
+          <div class="pri-grid">${PRIORITIES.map(p => `
+            <div class="pri-opt" data-pri="${p.value}"
+                 style="background:${p.bg};color:${p.color};border-color:${m.priority === p.value ? p.dot : "transparent"}">${p.label}</div>`).join("")}
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="modal-btn frost secondary" type="button" data-action="cancel">Cancel</button>
+          <button class="modal-btn frost" type="button" data-action="add">Add card</button>
+        </div>
+      </div>
+    </div>`;
+  $modalRoot.querySelector("#new-desc").focus();
+}
+
+// ---- Actions -----------------------------------------------------------------
+
+function openModal(colId) {
+  state.modal = { colId, desc: "", priority: "medium" };
+  renderModal();
+}
+
+function closeModal() {
+  state.modal = null;
+  renderModal();
+}
+
+function addCard() {
+  const m = state.modal;
+  updateCards(cards => [...cards, {
+    id: Date.now().toString(),
+    desc: m.desc.trim(),
+    priority: m.priority,
+    col: m.colId,
+    createdAt: new Date().toISOString(),
+    ...(m.colId === "done" ? { completedAt: today() } : {}),
+  }]);
+  closeModal();
+}
+
+function commitDesc(id, value) {
+  if (state.editDesc !== id) return;
+  state.editDesc = null;
+  const card = findCard(id);
+  const next = value.trim();
+  if (card && next !== (card.desc || "").trim()) {
+    updateCards(cards => cards.map(c => c.id === id ? { ...c, desc: next } : c));
+  } else {
+    render();
+  }
+}
+
+function commitDate(id, value, save) {
+  if (state.editDate !== id) return;
+  state.editDate = null;
+  const d = new Date(value.trim());
+  if (save && !isNaN(d)) {
+    updateCards(cards => cards.map(c => c.id === id ? { ...c, createdAt: d.toISOString() } : c));
+  } else {
+    render();
+  }
+}
+
+function setGhost(card) {
+  const p = priInfo(card.priority);
+  document.getElementById("drag-ghost").innerHTML = `
+    <div class="ghost-badge" style="background:${p.bg};color:${p.color}">
+      <span class="ghost-dot" style="background:${p.dot}"></span>${p.label}
+    </div>
+    <div class="ghost-desc">${esc((card.desc || "").slice(0, 120))}</div>`;
+}
+
+function setOverCol(colId) {
+  $board.querySelectorAll(".col").forEach(el => el.classList.toggle("over", el.dataset.col === colId));
+}
+
+function finishDrag() {
+  const { card, overCol, overIdx } = drag;
+  drag.card = drag.overCol = drag.overIdx = null;
+  if (!card) return;
+  if (overCol && overCol !== card.col) {
+    updateCards(cards => {
+      const rest = cards.filter(c => c.id !== card.id);
+      const moved = { ...card, col: overCol };
+      if (overCol === "done" && card.col !== "done") moved.completedAt = today();
+      if (overCol !== "done") delete moved.completedAt;
+      const target = rest.filter(c => c.col === overCol);
+      const others = rest.filter(c => c.col !== overCol);
+      const at = overIdx === null ? target.length : Math.min(overIdx, target.length);
+      target.splice(at, 0, moved);
+      return [...others, ...target];
+    });
+  } else {
+    render();
+  }
+}
+
+// ---- Events ------------------------------------------------------------------
+
+$board.addEventListener("click", e => {
+  const t = e.target;
+  const cardEl = t.closest(".card");
+
+  if (t.closest(".add-btn")) {
+    openModal(t.closest(".col").dataset.col);
+    return;
+  }
+  const sortBtn = t.closest(".sort-btn");
+  if (sortBtn) {
+    setSort(sortBtn.closest(".col").dataset.col, sortBtn.dataset.sort);
+    return;
+  }
+  const opt = t.closest(".pri-option");
+  if (opt && cardEl) {
+    e.stopPropagation();
+    const id = cardEl.dataset.id;
+    state.openPri = null;
+    updateCards(cards => cards.map(c => c.id === id ? { ...c, priority: opt.dataset.pri } : c));
+    return;
+  }
+  if (t.closest(".badge") && cardEl) {
+    e.stopPropagation();
+    state.openPri = state.openPri === cardEl.dataset.id ? null : cardEl.dataset.id;
+    render();
+  }
+});
+
+$board.addEventListener("dblclick", e => {
+  const t = e.target;
+  const cardEl = t.closest(".card");
+
+  if (cardEl) {
+    const id = cardEl.dataset.id;
+    if (t.closest(".card-date")) {
+      state.editDate = id;
+      state.focusEditor = true;
+      render();
+    } else if (!t.closest(".badge-wrap, .card-edit-area, .card-date-input") && state.editDesc !== id) {
+      state.editDesc = id;
+      state.focusEditor = true;
+      render();
+    }
+    return;
+  }
+  const col = t.closest(".col");
+  if (col && !t.closest("button")) openModal(col.dataset.col);
+});
+
+$board.addEventListener("focusout", e => {
+  const cardEl = e.target.closest(".card");
+  if (!cardEl) return;
+  if (e.target.matches(".card-edit-area")) commitDesc(cardEl.dataset.id, e.target.value);
+  if (e.target.matches(".card-date-input")) commitDate(cardEl.dataset.id, e.target.value, true);
+});
+
+$board.addEventListener("input", e => {
+  if (e.target.matches(".card-edit-area")) {
+    e.target.rows = Math.max(3, (e.target.value.match(/\n/g) || []).length + 1);
+  }
+});
+
+$board.addEventListener("keydown", e => {
+  if (!e.target.matches(".card-date-input")) return;
+  const id = e.target.closest(".card").dataset.id;
+  if (e.key === "Enter") { e.preventDefault(); commitDate(id, e.target.value, true); }
+  if (e.key === "Escape") commitDate(id, e.target.value, false);
+});
+
+$board.addEventListener("contextmenu", e => {
+  const cardEl = e.target.closest(".card");
+  if (!cardEl) return;
+  e.preventDefault();
+  e.stopPropagation();
+  state.ctx = { x: e.clientX, y: e.clientY, cardId: cardEl.dataset.id };
+  renderCtx();
+});
+
+$board.addEventListener("dragstart", e => {
+  const cardEl = e.target.closest(".card");
+  if (!cardEl) return;
+  const card = findCard(cardEl.dataset.id);
+  drag.card = card;
+  e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData("text/plain", card.id);
+  setGhost(card);
+  e.dataTransfer.setDragImage(document.getElementById("drag-ghost"), 40, 20);
+  setTimeout(() => cardEl.classList.add("faded"), 0);
+});
+
+$board.addEventListener("dragover", e => {
+  if (!drag.card) return;
+  const col = e.target.closest(".col");
+  if (!col) return;
+  e.preventDefault();
+  const colId = col.dataset.col;
+  const cardEl = e.target.closest(".card");
+  drag.overCol = colId;
+  drag.overIdx = cardEl && cardEl.dataset.col === colId ? Number(cardEl.dataset.idx) : colCards(colId).length;
+  setOverCol(colId);
+});
+
+$board.addEventListener("drop", e => {
+  e.preventDefault();
+  finishDrag();
+});
+
+$board.addEventListener("dragend", finishDrag);
+
+$ctxRoot.addEventListener("click", e => {
+  e.stopPropagation();
+  if (e.target.closest("[data-action=delete]") && state.ctx) {
+    const id = state.ctx.cardId;
+    state.ctx = null;
+    updateCards(cards => cards.filter(c => c.id !== id));
+  }
+});
+
+function closeMenus() {
+  if (state.ctx) { state.ctx = null; renderCtx(); }
+  if (state.openPri) { state.openPri = null; render(); }
+}
+window.addEventListener("click", closeMenus);
+window.addEventListener("contextmenu", closeMenus);
+
+$modalRoot.addEventListener("click", e => {
+  const t = e.target;
+  if (t.classList.contains("overlay")) return closeModal();
+  const action = t.closest("[data-action]")?.dataset.action;
+  if (action === "cancel") return closeModal();
+  if (action === "add") return addCard();
+  const opt = t.closest(".pri-opt");
+  if (opt) {
+    state.modal.priority = opt.dataset.pri;
+    $modalRoot.querySelectorAll(".pri-opt").forEach(el => {
+      el.style.borderColor = el.dataset.pri === state.modal.priority ? priInfo(el.dataset.pri).dot : "transparent";
+    });
+  }
+});
+
+$modalRoot.addEventListener("input", e => {
+  if (e.target.id === "new-desc") state.modal.desc = e.target.value;
+});
+
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && state.modal) closeModal();
+});
+
+$search.addEventListener("input", () => {
+  state.query = $search.value;
+  $searchClear.hidden = !state.query;
+  render();
+});
+
+$searchClear.addEventListener("click", e => {
+  e.preventDefault();
+  $search.value = state.query = "";
+  $searchClear.hidden = true;
+  render();
+});
+
+// ---- Load --------------------------------------------------------------------
+
+fetch("/api/data")
+  .then(res => { if (!res.ok) throw new Error(res.statusText); return res.json(); })
+  .then(data => {
+    state.cards = data.cards || [];
+    state.sortSettings = { todo: "created", progress: "created", ...data.sortSettings };
+    setStatus("saved");
+  })
+  .catch(() => {
+    state.cards = [];
+    state.loadFailed = true;
+    setStatus("error", "Couldn't load kanban.json");
+  })
+  .then(render);
+</script>
+</body>
 </html>
