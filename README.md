@@ -2,7 +2,8 @@
 
 Vibe coded this nodejs kanban app to my own liking. Why don't I use an existing one? I think they have too many features. Too many for my caveman brain to use.
 
-<img width="1914" height="440" alt="Kanban" src="https://github.com/user-attachments/assets/8a74ff4c-5b7c-418b-8aca-a179a5fd867b" />
+<img width="1914" height="1024" alt="project-kanban-board" src="https://github.com/user-attachments/assets/56aced86-e8b9-4797-adc9-103fc210703f" />
+
 
 Features
 - Double click on an empty part of a column (or click the faint + next to its heading) to add a card
